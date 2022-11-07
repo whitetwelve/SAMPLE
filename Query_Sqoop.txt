@@ -1,0 +1,139 @@
+Try Import from oracle to HDFS:
+GGGGAPPSRO
+Hostname : 10.206.95.11
+port : 1541
+username : PRDGG 
+### Check Connection ###
+$ sqoop list-databases --connect jdbc:oracle:thin:@//10.206.95.11:1541/PRDGG --username GGGGAPPSRO -P --driver oracle.jdbc.driver.OracleDriver
+$ sqoop list-databases --connect jdbc:mysql://203.161.184.88:3306  --username dhohirpr_khayangan -m 1
+
+
+# Import all table using query
+sqoop import \
+--connect jdbc:oracle:thin:@//10.206.95.11:1541/PRDGG \
+--username PRDGG -P \
+--query "SELECT GJH.JE_HEADER_ID,
+       GJH.BATCH_NAME,
+       GJH.NAME JOURNAL_NAME,
+       GJH.JE_SOURCE,
+       GJH.JE_CATEGORY,
+       GJH.DESCRIPTION HDR_DESCRIPTION,
+       GJH.BATCH_POSTED_DATE,
+       GJH.CREATION_DATE,
+       GJH.CURRENCY_CODE,
+       GJH.RUNNING_TOTAL_DR,
+       GJH.RUNNING_TOTAL_CR,
+       GJH.RUNNING_TOTAL_ACCOUNTED_DR,
+       GJH.RUNNING_TOTAL_ACCOUNTED_CR,
+       GJH.LEDGER_ID,
+       GJH.PERIOD_NAME,
+       GJH.STATUS HDR_STATUS,
+       GJL.JE_LINE_NUM,
+       GJL.SEGMENT2 KODE_PP,
+       GJL.SEGMENT3 ACCOUNT,
+       GJL.SEGMENT4 SUB_ACCOUNT,
+       CASE
+       WHEN GJL.SEGMENT4 = '00' THEN
+           (SELECT FFVL.DESCRIPTION
+              FROM FND_FLEX_VALUES_VL FFVL
+              WHERE FFVL.FLEX_VALUE_SET_ID = 1014176
+              AND FFVL.FLEX_VALUE = GJL.SEGMENT3)
+        ELSE
+            (SELECT FFVL.DESCRIPTION
+              FROM FND_FLEX_VALUES_VL FFVL
+              WHERE FFVL.FLEX_VALUE_SET_ID = 1014176
+              AND FFVL.FLEX_VALUE = GJL.SEGMENT3)||'-'||
+            (SELECT FFVL.DESCRIPTION
+              FROM FND_FLEX_VALUES_VL FFVL
+              WHERE FFVL.FLEX_VALUE_SET_ID = 1014177
+              AND FFVL.PARENT_FLEX_VALUE_LOW = GJL.SEGMENT3
+              AND FFVL.FLEX_VALUE = GJL.SEGMENT4)
+       END ACCOUNT_DESC,
+       (GJL.SEGMENT1
+       || '.'
+       || GJL.SEGMENT2
+       || '.'
+       || GJL.SEGMENT3
+       || '.'
+       || GJL.SEGMENT4
+       || '.'
+       || GJL.SEGMENT5
+       || '.'
+       || GJL.SEGMENT6 )GL_ACCOUNT,
+       GJL.DESCRIPTION LINE_DESCRIPTION,
+       GJL.ACCOUNTED_DR,
+       GJL.ACCOUNTED_CR,
+       GJL.STATUS,
+       FU.USER_NAME ENTERED_BY
+  FROM GL_JE_HEADERS_V GJH,
+       GL_JE_LINES_V GJL,
+       GL_JE_BATCHES GJB,
+       FND_USER FU,
+       GL_LEDGERS GL
+WHERE GJH.LEDGER_ID = GL.LEDGER_ID
+AND GJH.JE_HEADER_ID = GJL.JE_HEADER_ID
+AND GJH.JE_BATCH_ID = GJB.JE_BATCH_ID (+)
+AND GJH.CREATED_BY = FU.USER_ID
+AND GJH.STATUS = 'P'
+AND trunc(GJH.CREATION_DATE) between to_date('2020-11-01', 'YYYY-MM-DD') and to_date('2021-12-01', 'YYYY-MM-DD')  ORDER BY GJH.CREATION_DATE asc ;" \
+--split-by JE_HEADER_ID \
+--target-dir /user/hive/sqoop-import/test \
+-m 1
+
+sqoop import 
+
+sqoop import \
+--connect jdbc:oracle:thin:@//10.206.95.11:1541/PRDGG \
+--username GGGGAPPSRO -P \
+--query "SELECT * from GL_JE_HEADERS_V WHERE rownum < 10 AND \$CONDITIONS" \
+--map-column-java ROWID=String \
+--target-dir /user/hive/sqoop-import/test \
+-m 1
+
+
+sqoop import \
+--connect jdbc:oracle:thin:@//10.206.95.11:1541/PRDGG \
+--username GGGGAPPSRO -P \
+--query "SELECT * from GL_JE_HEADERS_V WHERE rownum < 10 AND \$CONDITIONS" \
+--split-by JE_HEADER_ID\
+--target-dir /user/hive/sqoop-import/test \
+-m 1
+
+
+--AND GJL.SEGMENT2 = '05050000'    --Kode PP Property
+--AND GJL.SEGMENT3 LIKE '5%' --BEBAN
+--AND GJH.JE_SOURCE = 'Manual'
+--AND GJH.PERIOD_NAME LIKE '%-17'
+
+
+
+
+
+#CREATE TABLE 
+CREATE TABLE IF NOT EXISTS SAMPLE(JE_HEADER_ID INT,BATCH_NAME String, JOURNAL_NAME String,JE_SOURCE String,
+JE_CATEGORY String,HDR_DESCRIPTION String, BATCH_POSTED_DATE date,CREATION_DATE date, 
+CURRENCY_CODE String, RUNNING_TOTAL_DR decimal(6,2), RUNNING_TOTAL_CR decimal(6,2)) ROW FORMAT DELIMITED STORED AS ORC;
+
+#IMPORT AUTO CREATE TABLE 
+sqoop create-hive-table \connect jdbc:oracle:thin:@//10.206.95.11:1541/PRDGG username GGGGAPPSRO password k3d1r1 table GJH hive-table GJH
+
+#INSERT TO TABLE HIVE 
+INSERT INTO SAMPLE VALUES (25553206,"Cost Management A 245028 46928358","614882693 Inventory IDR","Cost Management","Inventory","Journal Import 46928358:",2020-01-01,2020-01-01,"IDR","147046.84","147046.84")
+
+#LOAD DATA FROM LOCAL TO HIVE TABLE 
+hadoop fs -mkdir<path-server>
+hadoop fs -put <path-local-source> <path-server>
+hadoop fs -ls <path-server>
+use db;
+load data inpath '<path-server>' overwrite into table <name-table>;
+
+
+#TEST SAMPLE 
+CREATE TABLE IF NOT EXISTS gg.employee (
+ id int,
+ name string,
+ age int,
+ gender string )
+ COMMENT 'Employee Table'
+ ROW FORMAT DELIMITED
+ FIELDS TERMINATED BY ',';

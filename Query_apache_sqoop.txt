@@ -1,0 +1,86 @@
+Try Import from oracle to HDFS:
+GGGGAPPSRO
+Hostname : 10.206.95.11
+port : 1541
+username : PRDGG 
+### Check Connection ###
+$ sqoop list-databases --connect jdbc:oracle:thin:@10.206.95.11:1541:PRDGG --username GGGGAPPSRO -P --driver oracle.jdbc.driver.OracleDriver
+
+# Import all table using query
+sqoop import \
+--connect jdbc:oracle:thin:10.206.95.11:1541 \
+--username PRDGG -P \
+--query "SELECT GJH.JE_HEADER_ID,
+       GJH.BATCH_NAME,
+       GJH.NAME JOURNAL_NAME,
+       GJH.JE_SOURCE,
+       GJH.JE_CATEGORY,
+       GJH.DESCRIPTION HDR_DESCRIPTION,
+       GJH.BATCH_POSTED_DATE,
+       GJH.CREATION_DATE,
+       GJH.CURRENCY_CODE,
+       GJH.RUNNING_TOTAL_DR,
+       GJH.RUNNING_TOTAL_CR,
+       GJH.RUNNING_TOTAL_ACCOUNTED_DR,
+       GJH.RUNNING_TOTAL_ACCOUNTED_CR,
+       GJH.LEDGER_ID,
+       GJH.PERIOD_NAME,
+       GJH.STATUS HDR_STATUS,
+       GJL.JE_LINE_NUM,
+       GJL.SEGMENT2 KODE_PP,
+       GJL.SEGMENT3 ACCOUNT,
+       GJL.SEGMENT4 SUB_ACCOUNT,
+       CASE
+       WHEN GJL.SEGMENT4 = '00' THEN
+           (SELECT FFVL.DESCRIPTION
+              FROM FND_FLEX_VALUES_VL FFVL
+              WHERE FFVL.FLEX_VALUE_SET_ID = 1014176
+              AND FFVL.FLEX_VALUE = GJL.SEGMENT3)
+        ELSE
+            (SELECT FFVL.DESCRIPTION
+              FROM FND_FLEX_VALUES_VL FFVL
+              WHERE FFVL.FLEX_VALUE_SET_ID = 1014176
+              AND FFVL.FLEX_VALUE = GJL.SEGMENT3)||'-'||
+            (SELECT FFVL.DESCRIPTION
+              FROM FND_FLEX_VALUES_VL FFVL
+              WHERE FFVL.FLEX_VALUE_SET_ID = 1014177
+              AND FFVL.PARENT_FLEX_VALUE_LOW = GJL.SEGMENT3
+              AND FFVL.FLEX_VALUE = GJL.SEGMENT4)
+       END ACCOUNT_DESC,
+       (GJL.SEGMENT1
+       || '.'
+       || GJL.SEGMENT2
+       || '.'
+       || GJL.SEGMENT3
+       || '.'
+       || GJL.SEGMENT4
+       || '.'
+       || GJL.SEGMENT5
+       || '.'
+       || GJL.SEGMENT6 )GL_ACCOUNT,
+       GJL.DESCRIPTION LINE_DESCRIPTION,
+       GJL.ACCOUNTED_DR,
+       GJL.ACCOUNTED_CR,
+       GJL.STATUS,
+       FU.USER_NAME ENTERED_BY
+  FROM GL_JE_HEADERS_V GJH,
+       GL_JE_LINES_V GJL,
+       GL_JE_BATCHES GJB,
+       FND_USER FU,
+       GL_LEDGERS GL
+WHERE GJH.LEDGER_ID = GL.LEDGER_ID
+AND GJH.JE_HEADER_ID = GJL.JE_HEADER_ID
+AND GJH.JE_BATCH_ID = GJB.JE_BATCH_ID (+)
+AND GJH.CREATED_BY = FU.USER_ID
+AND GJH.STATUS = 'P'
+AND  trunc(GJH.CREATION_DATE) between to_date('2020-01-01', 'YYYY-MM-DD') and to_date('2021-01-01', 'YYYY-MM-DD')  ORDER BY GJH.CREATION_DATE asc ;" \
+--split-by JE_HEADER_ID \
+--target-dir /user/hive/sqoop-import/test \
+-m 1
+
+
+--AND GJL.SEGMENT2 = '05050000'    --Kode PP Property
+--AND GJL.SEGMENT3 LIKE '5%' --BEBAN
+--AND GJH.JE_SOURCE = 'Manual'
+--AND GJH.PERIOD_NAME LIKE '%-17'
+
